@@ -13,9 +13,10 @@ class XUIAPI:
     def __init__(self):
         self.session = None
         self.cookie_jar = aiohttp.CookieJar(unsafe=True)
+        self._reality_cache = None
 
-    async def login(self):
-        try:
+    async def _ensure_session(self):
+        if self.session is None:
             connector = aiohttp.TCPConnector(ssl=config.XUI_VERIFY_SSL)
             self.session = aiohttp.ClientSession(
                 connector=connector,
@@ -23,8 +24,26 @@ class XUIAPI:
                 trust_env=True
             )
 
-            base_url = config.XUI_API_URL.rstrip('/')
-            login_url = f"{base_url}/login"
+    def _build_url(self, path: str) -> str:
+        base_url = config.XUI_API_URL.rstrip('/')
+        base_path = config.XUI_BASE_PATH.strip('/')
+        if base_path:
+            base_url = f"{base_url}/{base_path}"
+        return f"{base_url}{path}"
+
+    def _auth_headers(self) -> dict:
+        if config.XUI_API_TOKEN:
+            return {"Authorization": f"Bearer {config.XUI_API_TOKEN}"}
+        return {}
+
+    async def login(self):
+        if config.XUI_API_TOKEN:
+            await self._ensure_session()
+            return True
+
+        try:
+            await self._ensure_session()
+            login_url = self._build_url("/login")
 
             async with self.session.post(login_url, data={
                 "username": config.XUI_USERNAME,
@@ -46,7 +65,6 @@ class XUIAPI:
                     text = await resp.text()
                     if "success" in text.lower():
                         return True
-                    logger.error(f"Login failed. Response: {text[:100]}...")
                     return False
         except Exception as e:
             logger.exception(f"Login error: {e}")
@@ -54,72 +72,78 @@ class XUIAPI:
 
     async def get_inbound(self, inbound_id: int):
         try:
-            base_url = config.XUI_API_URL.rstrip('/')
-            base_path = config.XUI_BASE_PATH.strip('/')
-            if base_path:
-                base_url = f"{base_url}/{base_path}"
-            url = f"{base_url}/api/inbounds/get/{inbound_id}"
+            await self._ensure_session()
+            url = self._build_url(f"/api/inbounds/get/{inbound_id}")
 
-            async with self.session.get(url) as resp:
+            async with self.session.get(url, headers=self._auth_headers()) as resp:
                 if resp.status != 200:
                     return None
-
-                try:
-                    data = await resp.json()
-                    if data.get("success"):
-                        return data.get("obj")
-                    return None
-                except Exception:
-                    return None
+                data = await resp.json()
+                if data.get("success"):
+                    return data.get("obj")
+                return None
         except Exception as e:
             logger.exception(f"Get inbound error: {e}")
             return None
 
     async def update_inbound(self, inbound_id: int, data: dict):
         try:
-            base_url = config.XUI_API_URL.rstrip('/')
-            base_path = config.XUI_BASE_PATH.strip('/')
-            if base_path:
-                base_url = f"{base_url}/{base_path}"
-            url = f"{base_url}/api/inbounds/update/{inbound_id}"
+            await self._ensure_session()
+            url = self._build_url(f"/api/inbounds/update/{inbound_id}")
 
-            async with self.session.post(url, json=data) as resp:
+            async with self.session.post(url, json=data, headers=self._auth_headers()) as resp:
                 if resp.status != 200:
                     return False
-
-                try:
-                    response = await resp.json()
-                    return response.get("success", False)
-                except Exception:
-                    text = await resp.text()
-                    return "success" in text.lower()
+                response = await resp.json()
+                return response.get("success", False)
         except Exception as e:
             logger.exception(f"Update inbound error: {e}")
             return False
 
-    async def _get_flow_from_inbound(self, inbound: dict) -> str:
+    async def get_reality_settings(self) -> dict:
+        if self._reality_cache:
+            return self._reality_cache
+
+        inbound = await self.get_inbound(config.INBOUND_ID)
+        if not inbound:
+            logger.error("Failed to get inbound for Reality settings")
+            return {}
+
         try:
-            settings = json.loads(inbound.get("settings", "{}"))
             stream_settings = json.loads(inbound.get("streamSettings", "{}"))
-            reality_settings = stream_settings.get("realitySettings", {})
+            reality = stream_settings.get("realitySettings", {})
 
-            if reality_settings:
-                clients = settings.get("clients", [])
-                if clients and len(clients) > 0:
-                    existing_flow = clients[0].get("flow", "")
-                    if existing_flow:
-                        return existing_flow
-                return reality_settings.get("flow", "")
-
+            settings = json.loads(inbound.get("settings", "{}"))
             clients = settings.get("clients", [])
-            if clients and len(clients) > 0:
-                existing_flow = clients[0].get("flow", "")
-                if existing_flow:
-                    return existing_flow
-        except Exception as e:
-            logger.warning(f"Could not get flow from inbound: {e}")
 
-        return ""
+            public_key = reality.get("publicKey", "")
+            sni = reality.get("serverNames", [""])[0] if reality.get("serverNames") else ""
+            short_id = reality.get("shortIds", [""])[0] if reality.get("shortIds") else ""
+            spider_x = reality.get("spiderX", "/")
+            fingerprint = reality.get("fingerprint", "chrome")
+            flow = ""
+
+            if clients and len(clients) > 0:
+                flow = clients[0].get("flow", "")
+
+            if not flow and reality.get("flow"):
+                flow = reality.get("flow", "")
+
+            self._reality_cache = {
+                "public_key": public_key,
+                "sni": sni,
+                "short_id": short_id,
+                "spider_x": spider_x,
+                "fingerprint": fingerprint,
+                "flow": flow,
+                "port": inbound.get("port", 443),
+            }
+
+            logger.info(f"Reality settings loaded: sni={sni}, port={inbound.get('port')}")
+            return self._reality_cache
+        except Exception as e:
+            logger.error(f"Failed to parse Reality settings: {e}")
+            return {}
 
     async def create_vless_profile(self, telegram_id: int, expiry_time: int = 0):
         if not await self.login():
@@ -132,18 +156,22 @@ class XUIAPI:
         if not inbound:
             return None
 
+        reality = await self.get_reality_settings()
+        if not reality:
+            logger.error("Cannot create profile: Reality settings not available")
+            return None
+
         try:
             settings = json.loads(inbound["settings"])
             clients = settings.get("clients", [])
 
             client_id = str(uuid.uuid4())
             email = f"user_{telegram_id}_{random.randint(1000, 9999)}"
-            flow = await self._get_flow_from_inbound(inbound)
             sub_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"user_{telegram_id}"))
 
             new_client = {
                 "id": client_id,
-                "flow": flow,
+                "flow": reality.get("flow", ""),
                 "email": email,
                 "limitIp": 0,
                 "totalGB": 0,
@@ -152,10 +180,10 @@ class XUIAPI:
                 "tgId": "",
                 "subId": sub_id,
                 "reset": 0,
-                "fingerprint": config.REALITY_FINGERPRINT,
-                "publicKey": config.REALITY_PUBLIC_KEY,
-                "shortId": config.REALITY_SHORT_ID,
-                "spiderX": config.REALITY_SPIDER_X
+                "fingerprint": reality.get("fingerprint", config.REALITY_FINGERPRINT),
+                "publicKey": reality["public_key"],
+                "shortId": reality["short_id"],
+                "spiderX": reality.get("spider_x", config.REALITY_SPIDER_X)
             }
 
             if expiry_time < 1577836800:
@@ -185,14 +213,14 @@ class XUIAPI:
                 return {
                     "client_id": client_id,
                     "email": email,
-                    "port": inbound["port"],
+                    "port": reality.get("port", inbound.get("port", 443)),
                     "security": "reality",
                     "remark": inbound["remark"],
-                    "sni": config.REALITY_SNI,
-                    "pbk": config.REALITY_PUBLIC_KEY,
-                    "fp": config.REALITY_FINGERPRINT,
-                    "sid": config.REALITY_SHORT_ID,
-                    "spx": config.REALITY_SPIDER_X,
+                    "sni": reality["sni"],
+                    "pbk": reality["public_key"],
+                    "fp": reality.get("fingerprint", config.REALITY_FINGERPRINT),
+                    "sid": reality["short_id"],
+                    "spx": reality.get("spider_x", config.REALITY_SPIDER_X),
                     "sub_id": sub_id
                 }
             return None
@@ -257,27 +285,20 @@ class XUIAPI:
             return {"upload": 0, "download": 0}
 
         try:
-            base_url = config.XUI_API_URL.rstrip('/')
-            base_path = config.XUI_BASE_PATH.strip('/')
-            if base_path:
-                base_url = f"{base_url}/{base_path}"
-            url = f"{base_url}/api/inbounds/getClientTraffics/{email}"
+            url = self._build_url(f"/api/inbounds/getClientTraffics/{email}")
 
-            async with self.session.get(url) as resp:
+            async with self.session.get(url, headers=self._auth_headers()) as resp:
                 if resp.status != 200:
                     return {"upload": 0, "download": 0}
 
-                try:
-                    data = await resp.json()
-                    if data.get("success"):
-                        client_data = data.get("obj")
-                        if isinstance(client_data, dict):
-                            return {
-                                "upload": client_data.get("up", 0),
-                                "download": client_data.get("down", 0)
-                            }
-                except Exception:
-                    return {"upload": 0, "download": 0}
+                data = await resp.json()
+                if data.get("success"):
+                    client_data = data.get("obj")
+                    if isinstance(client_data, dict):
+                        return {
+                            "upload": client_data.get("up", 0),
+                            "download": client_data.get("down", 0)
+                        }
         except Exception as e:
             logger.error(f"Stats error: {e}")
         return {"upload": 0, "download": 0}
@@ -287,28 +308,21 @@ class XUIAPI:
             return 0
 
         try:
-            base_url = config.XUI_API_URL.rstrip('/')
-            base_path = config.XUI_BASE_PATH.strip('/')
-            if base_path:
-                base_url = f"{base_url}/{base_path}"
-            url = f"{base_url}/api/inbounds/onlines"
+            url = self._build_url("/api/inbounds/onlines")
 
-            async with self.session.post(url) as resp:
+            async with self.session.post(url, headers=self._auth_headers()) as resp:
                 if resp.status != 200:
                     return 0
 
-                try:
-                    data = await resp.json()
-                    online = 0
-                    if data.get("success"):
-                        users = data.get("obj")
-                        if isinstance(users, list):
-                            for user in users:
-                                if str(user).startswith("user_"):
-                                    online += 1
-                    return online
-                except Exception:
-                    return 0
+                data = await resp.json()
+                online = 0
+                if data.get("success"):
+                    users = data.get("obj")
+                    if isinstance(users, list):
+                        for user in users:
+                            if str(user).startswith("user_"):
+                                online += 1
+                return online
         except Exception as e:
             logger.error(f"Online users error: {e}")
         return 0
@@ -370,11 +384,11 @@ def generate_vless_url(profile_data: dict) -> str:
     return (
         f"vless://{profile_data['client_id']}@{config.XUI_HOST}:{profile_data['port']}"
         f"?type=tcp&security=reality"
-        f"&pbk={config.REALITY_PUBLIC_KEY}"
-        f"&fp={config.REALITY_FINGERPRINT}"
-        f"&sni={config.REALITY_SNI}"
-        f"&sid={config.REALITY_SHORT_ID}"
-        f"&spx={config.REALITY_SPIDER_X}"
+        f"&pbk={profile_data.get('pbk', '')}"
+        f"&fp={profile_data.get('fp', 'chrome')}"
+        f"&sni={profile_data.get('sni', '')}"
+        f"&sid={profile_data.get('sid', '')}"
+        f"&spx={profile_data.get('spx', '/')}"
         f"#{fragment}"
     )
 

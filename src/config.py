@@ -12,6 +12,7 @@ class Config(BaseModel):
     XUI_API_URL: str = os.getenv("XUI_API_URL", "http://localhost:54321")
     XUI_BASE_PATH: str = os.getenv("XUI_BASE_PATH", "/panel")
     XUI_SUB_PORT: str = os.getenv("XUI_SUB_PORT", "54321")
+    XUI_API_TOKEN: str = os.getenv("XUI_API_TOKEN", "")
     XUI_USERNAME: str = os.getenv("XUI_USERNAME", "admin")
     XUI_PASSWORD: str = os.getenv("XUI_PASSWORD", "admin")
     XUI_HOST: str = os.getenv("XUI_HOST", "your-server.com")
@@ -19,12 +20,13 @@ class Config(BaseModel):
     XUI_VERIFY_SSL: bool = Field(default=os.getenv("XUI_VERIFY_SSL", "True").lower() == "true")
     PAYMENT_TOKEN: str = os.getenv("PAYMENT_TOKEN", "")
     INBOUND_ID: int = Field(default=os.getenv("INBOUND_ID", 1))
-    REALITY_PUBLIC_KEY: str = os.getenv("REALITY_PUBLIC_KEY", "")
-    REALITY_FINGERPRINT: str = os.getenv("REALITY_FINGERPRINT", "chrome")
-    REALITY_SNI: str = os.getenv("REALITY_SNI", "example.com")
-    REALITY_SHORT_ID: str = os.getenv("REALITY_SHORT_ID", "1234567890")
-    REALITY_SPIDER_X: str = os.getenv("REALITY_SPIDER_X", "/")
     SUBSCRIPTION_URL_BASE: str = os.getenv("SUBSCRIPTION_URL_BASE", "")
+    REALITY_FINGERPRINT: str = os.getenv("REALITY_FINGERPRINT", "chrome")
+    REALITY_SPIDER_X: str = os.getenv("REALITY_SPIDER_X", "/")
+    # Reality настройки подтягиваются из inbound автоматически
+    REALITY_PUBLIC_KEY: str = ""
+    REALITY_SNI: str = ""
+    REALITY_SHORT_ID: str = ""
 
     PRICES: Dict[int, Dict[str, int]] = {
         1: {"base_price": 100, "discount_percent": 0},
