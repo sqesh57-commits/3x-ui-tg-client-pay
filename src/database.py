@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, func
 from sqlalchemy.orm import declarative_base, sessionmaker
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ class User(Base):
     telegram_id = Column(Integer, unique=True)
     full_name = Column(String)
     username = Column(String)
-    registration_date = Column(DateTime, default=datetime.utcnow)
+    registration_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     subscription_end = Column(DateTime)
     vless_profile_id = Column(String)
     vless_profile_data = Column(String)
@@ -25,7 +25,7 @@ class StaticProfile(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String)
     vless_url = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 engine = create_engine('sqlite:///users.db', echo=False)
 Session = sessionmaker(bind=engine)
@@ -49,7 +49,7 @@ async def get_user(telegram_id: int):
 async def create_user(telegram_id: int, full_name: str, username: str = None, is_admin: bool = False):
     with Session() as session:
         # Создаем пользователя с корректной датой подписки
-        subscription_end = validate_and_fix_subscription_date(datetime.utcnow() + timedelta(days=3))
+        subscription_end = validate_and_fix_subscription_date(datetime.now(timezone.utc) + timedelta(days=3))
         user = User(
             telegram_id=telegram_id,
             full_name=full_name,
@@ -76,7 +76,7 @@ async def update_subscription(telegram_id: int, months: int):
     with Session() as session:
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
         if user:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             
             # Сначала проверяем и исправляем текущую дату если нужно
             user.subscription_end = validate_and_fix_subscription_date(user.subscription_end)
@@ -103,9 +103,9 @@ async def get_all_users(with_subscription: bool = None):
         query = session.query(User)
         if with_subscription is not None:
             if with_subscription:
-                query = query.filter(User.subscription_end > datetime.utcnow())
+                query = query.filter(User.subscription_end > datetime.now(timezone.utc))
             else:
-                query = query.filter(User.subscription_end <= datetime.utcnow())
+                query = query.filter(User.subscription_end <= datetime.now(timezone.utc))
         return query.all()
 
 async def create_static_profile(name: str, vless_url: str):
@@ -123,7 +123,7 @@ async def get_static_profiles():
 async def get_user_stats():
     with Session() as session:
         total = session.query(func.count(User.id)).scalar()
-        with_sub = session.query(func.count(User.id)).filter(User.subscription_end > datetime.utcnow()).scalar()
+        with_sub = session.query(func.count(User.id)).filter(User.subscription_end > datetime.now(timezone.utc)).scalar()
         without_sub = total - with_sub
         return total, with_sub, without_sub
 
@@ -196,7 +196,7 @@ def validate_and_fix_subscription_date(subscription_end: datetime) -> datetime:
     Returns:
         Исправленная дата окончания подписки (datetime)
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     # Конвертируем строку в datetime если нужно
     if isinstance(subscription_end, str):

@@ -1,17 +1,14 @@
 import json
 import asyncio
 import logging
-import warnings
 import coloredlogs
 from config import config
 from aiogram import Bot, Dispatcher
 from aiogram.types import PreCheckoutQuery
 from handlers import setup_handlers
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functions import delete_client_by_email
 from database import Session, User, init_db, get_all_users, delete_user_profile
-
-warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Настройка логирования
 coloredlogs.install(level='info')
@@ -21,7 +18,7 @@ async def check_subscriptions(bot: Bot):
     """Проверка статуса подписок"""
     while True:
         try:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             users = await get_all_users()
             
             for user in users:
@@ -137,6 +134,20 @@ async def main():
     # Обработчик для предварительной проверки платежа
     @dp.pre_checkout_query()
     async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
+        payload = pre_checkout_query.invoice_payload
+        if not payload.startswith("subscription_"):
+            await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message="Некорректный запрос")
+            return
+
+        try:
+            months = int(payload.split("_")[1])
+            if months not in config.PRICES:
+                await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message="Неверный период")
+                return
+        except (ValueError, IndexError):
+            await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message="Ошибка данных")
+            return
+
         await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
     
     # Запускаем фоновую задачу проверки подписок

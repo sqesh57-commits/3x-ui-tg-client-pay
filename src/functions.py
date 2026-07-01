@@ -58,7 +58,7 @@ class XUIAPI:
                     else:
                         logger.error(f"🛑 Login failed: {response.get('msg')}")
                         return False
-                except:
+                except Exception:
                     # Если ответ не JSON, проверяем текст
                     text = await resp.text()
                     if "success" in text.lower():
@@ -102,7 +102,7 @@ class XUIAPI:
                     else:
                         logger.error(f"🛑 Get inbound failed: {data.get('msg')}")
                         return None
-                except:
+                except Exception:
                     text = await resp.text()
                     logger.error(f"🛑 Get inbound response error: {text[:100]}...")
                     return None
@@ -133,7 +133,7 @@ class XUIAPI:
                         email = client.get("email", "unknown")
                         expiry_time = client.get("expiryTime", "not set")
                         logger.info(f"🔍 [update_inbound] Client {i}: {email}, expiryTime: {expiry_time}")
-                except:
+                except Exception:
                     logger.warning("⚠️ Could not parse settings for logging")
             
             async with self.session.post(url, json=data) as resp:
@@ -148,7 +148,7 @@ class XUIAPI:
                     response = await resp.json()
                     logger.info(f"🔍 [update_inbound] Response: {response}")
                     return response.get("success", False)
-                except:
+                except Exception:
                     text = await resp.text()
                     return "success" in text.lower()
         except Exception as e:
@@ -514,12 +514,12 @@ class XUIAPI:
                                 "upload": client_data.get("up", 0),
                                 "download": client_data.get("down", 0)
                             }
-                except:
+                except Exception:
                     return {"upload": 0, "download": 0}
         except Exception as e:
             logger.error(f"🛑 Stats error: {e}")
         return {"upload": 0, "download": 0}
-    
+
     async def get_global_stats(self, inbound_id: int):
         """Получение статистики по email"""
         if not await self.login():
@@ -546,7 +546,7 @@ class XUIAPI:
                                 "upload": client_data.get("up", 0),
                                 "download": client_data.get("down", 0)
                             }
-                except:
+                except Exception:
                     return {"upload": 0, "download": 0}
         except Exception as e:
             logger.error(f"🛑 Stats error: {e}")
@@ -580,7 +580,7 @@ class XUIAPI:
                                 if str(user).startswith("user_"):
                                     online += 1
                         return online
-                except:
+                except Exception:
                     return 0
         except Exception as e:
             logger.error(f"🛑 Stats error: {e}")

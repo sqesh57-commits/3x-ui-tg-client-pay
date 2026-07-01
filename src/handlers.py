@@ -3,7 +3,7 @@ import logging
 import json
 import io
 import qrcode
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from aiogram import Dispatcher, Router, F, Bot
 from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery, BufferedInputFile
 from aiogram.filters import Command
@@ -28,6 +28,17 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 MAX_MESSAGE_LENGTH = 4096
+
+
+def admin_required(handler):
+    """Decorator to check admin permissions before handler execution"""
+    async def wrapper(callback: CallbackQuery, **kwargs):
+        user = await get_user(callback.from_user.id)
+        if not user or not user.is_admin:
+            await callback.answer("Доступ запрещен!", show_alert=True)
+            return
+        return await handler(callback, **kwargs)
+    return wrapper
 
 class AdminStates(StatesGroup):
     ADD_TIME = State()
@@ -65,7 +76,7 @@ async def show_menu(bot: Bot, chat_id: int, message_id: int = None):
     if not user:
         return
     
-    status = "Активна" if user.subscription_end > datetime.utcnow() else "Истекла"
+    status = "Активна" if user.subscription_end > datetime.now(timezone.utc) else "Истекла"
     expire_date = user.subscription_end.strftime("%d-%m-%Y %H:%M") if status == "Активна" else status
     
     text = (
@@ -203,7 +214,7 @@ async def connect_cmd(message: Message, bot: Bot):
         await start_cmd(message, bot)
         return
     
-    if user.subscription_end < datetime.utcnow():
+    if user.subscription_end < datetime.now(timezone.utc):
         await message.answer("⚠️ Подписка истекла! Продлите подписку.")
         return
     
@@ -426,6 +437,20 @@ async def process_payment(callback: CallbackQuery, bot: Bot):
 
 @router.pre_checkout_query()
 async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery, bot: Bot):
+    payload = pre_checkout_query.invoice_payload
+    if not payload.startswith("subscription_"):
+        await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message="Некорректный запрос")
+        return
+
+    try:
+        months = int(payload.split("_")[1])
+        if months not in config.PRICES:
+            await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message="Неверный период")
+            return
+    except (ValueError, IndexError):
+        await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message="Ошибка данных")
+        return
+
     await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
 
 @router.message(F.successful_payment)
@@ -444,7 +469,7 @@ async def process_successful_payment(message: Message, bot: Bot):
                 return
             
             # Определяем тип действия (покупка или продление)
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             action_type = "продлена" if user.subscription_end > now else "куплена"
             
             # Обновляем подписку
@@ -523,6 +548,7 @@ async def admin_menu(callback: CallbackQuery):
 
 # Обработчики для управления временем подписки
 @router.callback_query(F.data == "admin_add_time")
+@admin_required
 async def admin_add_time_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()  # Снимаем анимацию
     await callback.message.answer("Введите Telegram ID пользователя:")
@@ -560,10 +586,10 @@ async def admin_add_time_amount(message: Message, state: FSMContext):
         with Session() as session:
             user = session.query(User).filter_by(telegram_id=user_id).first()
             if user:
-                if user.subscription_end > datetime.utcnow():
+                if user.subscription_end > datetime.now(timezone.utc):
                     user.subscription_end += timedelta(seconds=total_seconds)
                 else:
-                    user.subscription_end = datetime.utcnow() + timedelta(seconds=total_seconds)
+                    user.subscription_end = datetime.now(timezone.utc) + timedelta(seconds=total_seconds)
                 session.commit()
                 
                 # Обновляем expiry_time в 3x-ui если у пользователя есть профиль
@@ -588,6 +614,7 @@ async def admin_add_time_amount(message: Message, state: FSMContext):
         await state.clear()
 
 @router.callback_query(F.data == "admin_remove_time")
+@admin_required
 async def admin_remove_time_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()  # Снимаем анимацию
     await callback.message.answer("Введите Telegram ID пользователя:")
@@ -627,8 +654,8 @@ async def admin_remove_time_amount(message: Message, state: FSMContext):
             if user:
                 new_end = user.subscription_end - timedelta(seconds=total_seconds)
                 # Проверяем, чтобы не ушло в прошлое
-                if new_end < datetime.utcnow():
-                    new_end = datetime.utcnow()
+                if new_end < datetime.now(timezone.utc):
+                    new_end = datetime.now(timezone.utc)
                 user.subscription_end = new_end
                 session.commit()
                 
@@ -655,6 +682,7 @@ async def admin_remove_time_amount(message: Message, state: FSMContext):
 
 # Обработчики для вывода списка пользователей
 @router.callback_query(F.data == "admin_user_list")
+@admin_required
 async def admin_user_list(callback: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ С подпиской", callback_data="user_list_active")
@@ -713,6 +741,7 @@ async def handle_user_list_inactive(callback: CallbackQuery):
 
 # Обработчики для рассылки сообщений
 @router.callback_query(F.data == "admin_send_message")
+@admin_required
 async def admin_send_message_start(callback: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ С подпиской", callback_data="target_active")
@@ -755,6 +784,7 @@ async def admin_send_message(message: Message, state: FSMContext, bot: Bot):
         try:
             await bot.send_message(user.telegram_id, text)
             success += 1
+            await asyncio.sleep(0.05)  # Rate limiting: ~20 messages/second
         except Exception as e:
             logger.error(f"🛑 Ошибка отправки сообщения {user.telegram_id}: {e}")
             failed += 1
@@ -769,6 +799,7 @@ async def admin_send_message(message: Message, state: FSMContext, bot: Bot):
 
 # Остальные обработчики остаются без изменений
 @router.callback_query(F.data == "static_profiles_menu")
+@admin_required
 async def static_profiles_menu(callback: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.button(text="🆕 Добавить статический профиль", callback_data="static_profile_add")
@@ -778,6 +809,7 @@ async def static_profiles_menu(callback: CallbackQuery):
     await callback.message.edit_text("**Выберите действие**", reply_markup=builder.as_markup(), parse_mode='Markdown')
 
 @router.callback_query(F.data == "static_profile_add")
+@admin_required
 async def static_profile_add(callback: CallbackQuery, state: FSMContext):
     await callback.answer()  # Снимаем анимацию
     await callback.message.answer("Введите имя для статического профиля:")
@@ -824,6 +856,7 @@ async def process_static_profile_name(message: Message, state: FSMContext):
     await state.clear()
 
 @router.callback_query(F.data == "static_profile_list")
+@admin_required
 async def static_profile_list(callback: CallbackQuery):
     profiles = await get_static_profiles()
     if not profiles:
@@ -884,7 +917,7 @@ async def connect_profile(callback: CallbackQuery):
         await callback.answer("🛑 Ошибка профиля")
         return
     
-    if user.subscription_end < datetime.utcnow():
+    if user.subscription_end < datetime.now(timezone.utc):
         await callback.answer("⚠️ Подписка истекла! Продлите подписку.")
         return
     
@@ -997,6 +1030,7 @@ async def user_stats(callback: CallbackQuery):
     await callback.message.answer(text, parse_mode='Markdown', reply_markup=builder.as_markup())
 
 @router.callback_query(F.data == "admin_network_stats")
+@admin_required
 async def network_stats(callback: CallbackQuery):
     stats = await get_global_stats()
 
@@ -1020,6 +1054,7 @@ async def network_stats(callback: CallbackQuery):
     await callback.message.edit_text(text, parse_mode='Markdown', reply_markup=builder.as_markup())
 
 @router.callback_query(F.data == "admin_fix_profiles")
+@admin_required
 async def admin_fix_profiles(callback: CallbackQuery):
     """Исправляет все профили с неправильными датами"""
     await callback.answer("⏳ Исправляем профили...")
@@ -1068,6 +1103,7 @@ async def admin_fix_profiles(callback: CallbackQuery):
         await callback.message.answer(f"❌ Ошибка при исправлении профилей: {str(e)}")
 
 @router.callback_query(F.data == "admin_check_subscriptions")
+@admin_required
 async def admin_check_subscriptions(callback: CallbackQuery):
     """Проверяет и исправляет расхождения между 3x-ui и базой данных"""
     await callback.answer("⏳ Проверяем подписки...")
@@ -1143,6 +1179,7 @@ async def admin_check_subscriptions(callback: CallbackQuery):
         await callback.message.answer(f"❌ Ошибка при проверке подписок: {str(e)}")
 
 @router.callback_query(F.data == "admin_delete_user")
+@admin_required
 async def admin_delete_user_start(callback: CallbackQuery, state: FSMContext):
     """Начало процесса удаления пользователя"""
     await callback.answer()
