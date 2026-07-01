@@ -23,6 +23,8 @@ class Config(BaseModel):
     SUBSCRIPTION_URL_BASE: str = os.getenv("SUBSCRIPTION_URL_BASE", "")
     REALITY_FINGERPRINT: str = os.getenv("REALITY_FINGERPRINT", "chrome")
     REALITY_SPIDER_X: str = os.getenv("REALITY_SPIDER_X", "/")
+    NGINX_BASIC_AUTH_USER: str = os.getenv("NGINX_BASIC_AUTH_USER", "")
+    NGINX_BASIC_AUTH_PASSWORD: str = os.getenv("NGINX_BASIC_AUTH_PASSWORD", "")
     # Reality настройки подтягиваются из inbound автоматически
     REALITY_PUBLIC_KEY: str = ""
     REALITY_SNI: str = ""

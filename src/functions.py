@@ -32,23 +32,25 @@ class XUIAPI:
         return f"{base_url}{path}"
 
     def _auth_headers(self) -> dict:
-        if config.XUI_API_TOKEN:
-            return {"Authorization": f"Bearer {config.XUI_API_TOKEN}"}
-        return {}
+        headers = {}
+        if config.NGINX_BASIC_AUTH_USER:
+            import base64
+            creds = base64.b64encode(
+                f"{config.NGINX_BASIC_AUTH_USER}:{config.NGINX_BASIC_AUTH_PASSWORD}".encode()
+            ).decode()
+            headers["Authorization"] = f"Basic {creds}"
+        return headers
 
     async def login(self):
-        if config.XUI_API_TOKEN:
-            await self._ensure_session()
-            return True
-
         try:
             await self._ensure_session()
             login_url = self._build_url("/login")
 
-            async with self.session.post(login_url, data={
-                "username": config.XUI_USERNAME,
-                "password": config.XUI_PASSWORD
-            }) as resp:
+            async with self.session.post(
+                login_url,
+                data={"username": config.XUI_USERNAME, "password": config.XUI_PASSWORD},
+                headers=self._auth_headers()
+            ) as resp:
                 if resp.status != 200:
                     logger.error(f"Login failed with status: {resp.status}")
                     return False
