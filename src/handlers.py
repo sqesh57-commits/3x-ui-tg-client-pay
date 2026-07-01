@@ -31,7 +31,7 @@ async def show_menu(bot: Bot, chat_id: int, message_id: int = None):
     if not user:
         return
 
-    status = "Активна" if user.subscription_end > datetime.now(timezone.utc) else "Истекла"
+    status = "Активна" if user.subscription_end.replace(tzinfo=None) > datetime.utcnow() else "Истекла"
     expire_date = user.subscription_end.strftime("%d-%m-%Y %H:%M") if status == "Активна" else status
 
     text = (
@@ -155,7 +155,7 @@ async def connect_cmd(message: Message, bot: Bot):
         await start_cmd(message, bot)
         return
 
-    if user.subscription_end < datetime.now(timezone.utc):
+    if user.subscription_end.replace(tzinfo=None) < datetime.utcnow():
         await message.answer("⚠️ Подписка истекла! Продлите подписку.")
         return
 
@@ -381,7 +381,7 @@ async def process_successful_payment(message: Message, bot: Bot):
                 await message.answer("❌ Ошибка: пользователь не найден")
                 return
 
-            now = datetime.now(timezone.utc)
+            now = datetime.utcnow()
             action_type = "продлена" if user.subscription_end > now else "куплена"
 
             success = await update_subscription(message.from_user.id, months)
@@ -428,7 +428,7 @@ async def connect_profile(callback: CallbackQuery):
         await callback.answer("🛑 Ошибка профиля")
         return
 
-    if user.subscription_end < datetime.now(timezone.utc):
+    if user.subscription_end.replace(tzinfo=None) < datetime.utcnow():
         await callback.answer("⚠️ Подписка истекла! Продлите подписку.")
         return
 

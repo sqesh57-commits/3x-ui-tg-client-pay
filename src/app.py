@@ -17,7 +17,7 @@ async def check_subscriptions(bot: Bot):
     """Проверка статуса подписок и отправка уведомлений"""
     while True:
         try:
-            now = datetime.now(timezone.utc)
+            now = datetime.utcnow()
             users = await get_all_users()
 
             for user in users:

@@ -108,19 +108,24 @@ async def get_user_stats():
         return total, with_sub, without_sub
 
 
-def validate_and_fix_subscription_date(subscription_end: datetime) -> datetime:
+def validate_and_fix_subscription_date(subscription_end) -> datetime:
     now = datetime.now(timezone.utc)
+    default = now + timedelta(days=3)
 
     if isinstance(subscription_end, str):
         try:
             subscription_end = datetime.fromisoformat(subscription_end)
         except Exception:
-            return now + timedelta(days=3)
+            return default
 
     if not isinstance(subscription_end, datetime):
-        return now + timedelta(days=3)
+        return default
 
-    if subscription_end < datetime(2020, 1, 1) or subscription_end > now + timedelta(days=3650):
-        return now + timedelta(days=3)
+    # Strip timezone for comparison (SQLite stores naive datetimes)
+    sub = subscription_end.replace(tzinfo=None)
+    now_naive = now.replace(tzinfo=None)
+
+    if sub < datetime(2020, 1, 1) or sub > now_naive + timedelta(days=3650):
+        return default
 
     return subscription_end
