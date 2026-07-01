@@ -26,9 +26,6 @@ class XUIAPI:
 
     def _build_url(self, path: str) -> str:
         base_url = config.XUI_API_URL.rstrip('/')
-        base_path = config.XUI_BASE_PATH.strip('/')
-        if base_path:
-            base_url = f"{base_url}/{base_path}"
         return f"{base_url}{path}"
 
     def _auth_headers(self) -> dict:
