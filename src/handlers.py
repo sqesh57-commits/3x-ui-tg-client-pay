@@ -52,24 +52,6 @@ class AdminStates(StatesGroup):
     SEND_MESSAGE_TARGET = State()
     DELETE_USER = State()
 
-def split_text(text: str, max_length: int = MAX_MESSAGE_LENGTH) -> list:
-    """Разбивает текст на части указанной максимальной длины"""
-    if len(text) <= max_length:
-        return [text]
-    
-    parts = []
-    while text:
-        if len(text) <= max_length:
-            parts.append(text)
-            break
-        part = text[:max_length]
-        last_newline = part.rfind('\n')
-        if last_newline != -1:
-            part = part[:last_newline]
-        parts.append(part)
-        text = text[len(part):].lstrip()
-    return parts
-
 async def show_menu(bot: Bot, chat_id: int, message_id: int = None):
     """Функция для отображения меню (может как редактировать существующее сообщение, так и отправлять новое)"""
     user = await get_user(chat_id)
@@ -695,10 +677,10 @@ async def admin_user_list(callback: CallbackQuery):
 @router.callback_query(F.data == "user_list_active")
 async def handle_user_list_active(callback: CallbackQuery):
     users = await get_all_users(with_subscription=True)
-    await callback.answer()
     if not users:
-        await callback.answer("Нет пользователей с активной подпиской")
+        await callback.answer("Нет пользователей с активной подпиской", show_alert=True)
         return
+    await callback.answer()
     
     text = "👤 <b>Пользователи с активной подпиской:</b>\n\n"
     for user in users:
@@ -718,11 +700,11 @@ async def handle_user_list_active(callback: CallbackQuery):
 
 @router.callback_query(F.data == "user_list_inactive")
 async def handle_user_list_inactive(callback: CallbackQuery):
-    await callback.answer()
     users = await get_all_users(with_subscription=False)
     if not users:
-        await callback.answer("Нет пользователей без подписки")
+        await callback.answer("Нет пользователей без подписки", show_alert=True)
         return
+    await callback.answer()
     
     text = "👤 <b>Пользователи без подписки:</b>\n\n"
     for user in users:
