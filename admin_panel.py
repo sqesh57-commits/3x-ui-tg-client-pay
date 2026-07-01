@@ -8,7 +8,7 @@ import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.join(BASE_DIR, "src")
-DB_PATH = os.path.join(BASE_DIR, "data", "users.db")
+DB_PATH = os.path.join(BASE_DIR, "users.db")
 LOG_PATH = os.path.join(BASE_DIR, "bot_error.log")
 PID_PATH = os.path.join(BASE_DIR, "bot.pid")
 
@@ -95,7 +95,6 @@ with st.sidebar:
 if menu == "Мониторинг":
     st.header("Мониторинг")
 
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:

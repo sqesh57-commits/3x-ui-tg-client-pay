@@ -10,7 +10,5 @@ services:
       - ENABLE_CODE_EDITOR=${ENABLE_CODE_EDITOR:-false}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - ./data:/app/data
     ports:
       - "8501:8501"
