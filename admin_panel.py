@@ -94,24 +94,39 @@ with st.sidebar:
 
 if menu == "Мониторинг":
     st.header("Мониторинг")
-    if os.path.exists(DB_PATH):
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        try:
-            total = conn.execute("SELECT COUNT(*) as cnt FROM users").fetchone()["cnt"]
-            with_sub = conn.execute(
-                "SELECT COUNT(*) as cnt FROM users WHERE subscription_end > datetime('now')"
-            ).fetchone()["cnt"]
-            without_sub = total - with_sub
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Всего пользователей", total)
-            col2.metric("С подпиской", with_sub)
-            col3.metric("Без подписки", without_sub)
-        finally:
-            conn.close()
-    else:
-        st.info("База данных не найдена")
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER UNIQUE,
+                full_name TEXT,
+                username TEXT,
+                registration_date DATETIME,
+                subscription_end DATETIME,
+                vless_profile_id TEXT,
+                vless_profile_data TEXT,
+                is_admin BOOLEAN DEFAULT 0,
+                notified BOOLEAN DEFAULT 0
+            )
+        """)
+        conn.commit()
+
+        total = conn.execute("SELECT COUNT(*) as cnt FROM users").fetchone()["cnt"]
+        with_sub = conn.execute(
+            "SELECT COUNT(*) as cnt FROM users WHERE subscription_end > datetime('now')"
+        ).fetchone()["cnt"]
+        without_sub = total - with_sub
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Всего пользователей", total)
+        col2.metric("С подпиской", with_sub)
+        col3.metric("Без подписки", without_sub)
+    finally:
+        conn.close()
 
 elif menu == "Редактор кода":
     if not ENABLE_CODE_EDITOR:
