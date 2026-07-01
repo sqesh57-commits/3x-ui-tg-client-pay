@@ -26,7 +26,7 @@ class XUIAPI:
 
     def _build_url(self, path: str) -> str:
         base_url = config.XUI_API_URL.rstrip('/')
-        return f"{base_url}/panel{path}"
+        return f"{base_url}{path}"
 
     def _auth_headers(self) -> dict:
         headers = {}
