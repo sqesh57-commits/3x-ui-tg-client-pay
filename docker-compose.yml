@@ -3,12 +3,9 @@ services:
     build: .
     container_name: 3xui-tg-client-pay
     restart: unless-stopped
+    network_mode: host
     env_file:
       - .env
     environment:
       - ADMIN_PANEL_PASSWORD=${ADMIN_PANEL_PASSWORD:-}
       - ENABLE_CODE_EDITOR=${ENABLE_CODE_EDITOR:-false}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "8501:8501"
