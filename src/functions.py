@@ -26,16 +26,23 @@ class XUIAPI:
 
     def _build_url(self, path: str) -> str:
         base_url = config.XUI_API_URL.rstrip('/')
-        return f"{base_url}{path}"
+        return f"{base_url}/panel{path}"
 
     def _auth_headers(self) -> dict:
         headers = {}
-        if config.NGINX_BASIC_AUTH_USER:
-            import base64
-            creds = base64.b64encode(
-                f"{config.NGINX_BASIC_AUTH_USER}:{config.NGINX_BASIC_AUTH_PASSWORD}".encode()
-            ).decode()
-            headers["Authorization"] = f"Basic {creds}"
+        url = config.XUI_API_URL.lower()
+        if "localhost" in url or "127.0.0.1" in url:
+            # Localhost — nginx пропускает, шлём Bearer токен панели
+            if config.XUI_API_TOKEN:
+                headers["Authorization"] = f"Bearer {config.XUI_API_TOKEN}"
+        else:
+            # Внешний доступ — нужен Basic auth для nginx
+            if config.NGINX_BASIC_AUTH_USER:
+                import base64
+                creds = base64.b64encode(
+                    f"{config.NGINX_BASIC_AUTH_USER}:{config.NGINX_BASIC_AUTH_PASSWORD}".encode()
+                ).decode()
+                headers["Authorization"] = f"Basic {creds}"
         return headers
 
     async def login(self):
