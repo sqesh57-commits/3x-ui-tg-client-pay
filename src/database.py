@@ -2,12 +2,15 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime, timedelta, timezone
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
-
+DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+os.makedirs(DB_DIR, exist_ok=True)
+DB_PATH = os.path.join(DB_DIR, "users.db")
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
@@ -22,7 +25,7 @@ class User(Base):
     notified = Column(Boolean, default=False)
 
 
-engine = create_engine('sqlite:///users.db', echo=False)
+engine = create_engine(f'sqlite:///{DB_PATH}', echo=False)
 Session = sessionmaker(bind=engine)
 
 

@@ -8,7 +8,7 @@ import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.join(BASE_DIR, "src")
-DB_PATH = os.path.join(BASE_DIR, "users.db")
+DB_PATH = os.path.join(BASE_DIR, "data", "users.db")
 LOG_PATH = os.path.join(BASE_DIR, "bot_error.log")
 PID_PATH = os.path.join(BASE_DIR, "bot.pid")
 
