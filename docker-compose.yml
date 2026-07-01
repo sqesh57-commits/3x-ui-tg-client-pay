@@ -8,6 +8,8 @@ services:
     environment:
       - ADMIN_PANEL_PASSWORD=${ADMIN_PANEL_PASSWORD:-}
       - ENABLE_CODE_EDITOR=${ENABLE_CODE_EDITOR:-false}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - bot_data:/app/data
       - ./users.db:/app/users.db
