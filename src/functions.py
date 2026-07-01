@@ -406,19 +406,21 @@ def get_safe_expiry_timestamp(subscription_end) -> int:
     if not isinstance(subscription_end, datetime):
         return 0
 
-    now = datetime.now(timezone.utc)
+    # Strip timezone for comparison (SQLite stores naive datetimes)
+    sub = subscription_end.replace(tzinfo=None)
+    now = datetime.utcnow()
 
-    if subscription_end < datetime(2020, 1, 1, tzinfo=timezone.utc):
+    if sub < datetime(2020, 1, 1):
         return 0
 
-    if subscription_end > now + timedelta(days=3650):
+    if sub > now + timedelta(days=3650):
         return 0
 
-    if subscription_end <= now:
+    if sub <= now:
         return 0
 
     try:
-        timestamp = int(subscription_end.timestamp())
+        timestamp = int(sub.timestamp())
         if timestamp < 0 or timestamp < 1577836800:
             return 0
         return timestamp
